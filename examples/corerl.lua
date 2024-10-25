@@ -113,7 +113,8 @@ local function update(c, key)
 		local ny = my[i]
 
 		if i == 1 then
-			if ("[a147]"):match(c) or key == tb.KEY_ARROW_LEFT then
+			--if  or key == tb.KEY_ARROW_LEFT then
+			if key == tb.KEY_ARROW_LEFT or ("[a147]"):match(c) then
 				nx = nx - 1
 			end
 			if ("[d369]"):match(c) or key == tb.KEY_ARROW_RIGHT then
@@ -164,11 +165,9 @@ end
 
 init()
 
-tb.init(tb.INPUT_CURRENT, tb.OUTPUT_CURRENT)
-local zz = {}
-tb.setcallback(tb.EVENT_KEY, function(ch, key)
+tb.init()
+tb.setcallback(tb.EVENT_KEY, function(ch, key, mod)
 	update(ch, key)
-	zz[#zz + 1] = tostring(key)
 end)
 
 while state ~= "exit" do
@@ -178,5 +177,3 @@ while state ~= "exit" do
 end
 
 tb.shutdown()
-
-print(table.concat(zz, ","), tb.KEY_ARROW_LEFT)

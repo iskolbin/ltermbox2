@@ -24,14 +24,14 @@ static const char ref_event_mouse = 'm';
 
 static int tb2_init(lua_State *L) {
   if (lua_gettop(L) >= 2) {
-    int rfd = luaL_checkint(L, 1);
-    int wfd = luaL_checkint(L, 2);
+    int rfd = luaL_checkint(L, -2);
+    int wfd = luaL_checkint(L, -1);
     lua_pushinteger(L, tb_init_rwfd(rfd, wfd));
-  } else if (lua_gettop(L) == 1 && lua_isnumber(L, 1)) {
-    int ttyfd = luaL_checkint(L, 1);
+  } else if (lua_gettop(L) == 1 && lua_isnumber(L, -1)) {
+    int ttyfd = luaL_checkint(L, -1);
     lua_pushinteger(L, tb_init_fd(ttyfd));
-  } else if (lua_gettop(L) == 1 && lua_isstring(L, 1)) {
-    const char *path = luaL_checkstring(L, 1);
+  } else if (lua_gettop(L) == 1 && lua_isstring(L, -1)) {
+    const char *path = luaL_checkstring(L, -1);
     lua_pushinteger(L, tb_init_file(path));
   } else {
     lua_pushinteger(L, tb_init());
@@ -55,8 +55,8 @@ static int tb2_height(lua_State *L) {
 }
 
 static int tb2_set_clear_attrs(lua_State *L) {
-  uint16_t fg = luaL_checkint(L, 1);
-  uint16_t bg = luaL_checkint(L, 2);
+  uintattr_t fg = luaL_checkint(L, 1);
+  uintattr_t bg = luaL_checkint(L, 2);
   lua_pushinteger(L, tb_set_clear_attrs(fg, bg));
   return 1;
 }
@@ -89,8 +89,8 @@ static int tb2_set_cell(lua_State *L) {
   const char *chstr = luaL_checkstring(L, 3);
   uint32_t ch;
   tb_utf8_char_to_unicode(&ch, chstr);
-  uint16_t fg = lua_isnumber(L, 4) ? lua_tonumber(L, 4) : TB_DEFAULT;
-  uint16_t bg = lua_isnumber(L, 5) ? lua_tonumber(L, 5) : TB_DEFAULT;
+  uintattr_t fg = lua_isnumber(L, 4) ? lua_tonumber(L, 4) : TB_DEFAULT;
+  uintattr_t bg = lua_isnumber(L, 5) ? lua_tonumber(L, 5) : TB_DEFAULT;
   lua_pushinteger(L, tb_set_cell(x, y, ch, fg, bg));
   return 1;
 }
@@ -99,12 +99,11 @@ static int tb2_print(lua_State *L) {
   int x = luaL_checkint(L, 1);
   int y = luaL_checkint(L, 2);
   const char *str = luaL_checkstring(L, 3);
-  uint16_t fg = lua_isnumber(L, 4) ? lua_tonumber(L, 4) : TB_DEFAULT;
-  uint16_t bg = lua_isnumber(L, 5) ? lua_tonumber(L, 5) : TB_DEFAULT;
+  uintattr_t fg = lua_isnumber(L, 4) ? lua_tonumber(L, 4) : TB_DEFAULT;
+  uintattr_t bg = lua_isnumber(L, 5) ? lua_tonumber(L, 5) : TB_DEFAULT;
   size_t out_w = 0;
-  lua_pushinteger(L, tb_print_ex(x, y, fg, bg, &out_w, str));
-  lua_pushinteger(L, out_w);
-  return 2;
+  lua_pushinteger(L, tb_print(x, y, fg, bg, str));
+  return 1;
 }
 
 static int tb2_extend_cell(lua_State *L) {
@@ -136,10 +135,15 @@ static int tb2_wait_event(lua_State *L, int timeout) {
   }
   switch (event.type) {
     case TB_EVENT_KEY:
-      char out[8] = {0};
-      tb_utf8_unicode_to_char(out, event.ch);
-      lua_pushstring(L, out);
-      lua_pushinteger(L, event.key);
+      if (event.ch) {
+        char out[8] = {0};
+        tb_utf8_unicode_to_char(out, event.ch);
+        lua_pushstring(L, out);
+        lua_pushinteger(L, event.ch);
+      } else {
+        lua_pushstring(L, "");
+        lua_pushinteger(L, event.key);
+      }
       lua_pushinteger(L, event.mod);
       lua_call(L, 3, 0);
       break;
@@ -151,7 +155,8 @@ static int tb2_wait_event(lua_State *L, int timeout) {
     case TB_EVENT_MOUSE:
       lua_pushinteger(L, event.x);
       lua_pushinteger(L, event.y);
-      lua_call(L, 2, 0);
+      lua_pushinteger(L, event.key);
+      lua_call(L, 3, 0);
       break;
     default:
       lua_pop(L, 1);
@@ -169,25 +174,39 @@ static int tb2_poll_event(lua_State *L) {
 }
 
 static int tb2_set_callback(lua_State *L) {
-  int event_type = luaL_checkint(L, -2);
+  int event_type = luaL_checkint(L, 1);
   void *event_ref = get_event_ref(event_type);
   if (event_ref == NULL) {
     return luaL_error(L, "bad argument #1 to 'setcallback' (expected constant TB_EVENT_*)");
   }
-  if (!lua_isfunction(L, -1)) {
+  if (!lua_isfunction(L, 2)) {
     return luaL_error(L, "bad argument #2 to 'setcallback' (function expected)");
   }
   lua_pushlightuserdata(L, event_ref);  
-  lua_pushvalue(L, -2);
+  lua_pushvalue(L, 2);
   lua_settable(L, LUA_REGISTRYINDEX);
   return 0;
+}
+
+static int tb2_set_input_mode(lua_State *L) {
+  int mode = luaL_checkint(L, 1);
+  lua_pushinteger(L, tb_set_input_mode(mode));
+  return 1;
+}
+
+static int tb2_set_output_mode(lua_State *L) {
+  int mode = luaL_checkint(L, 1);
+  lua_pushinteger(L, tb_set_output_mode(mode));
+  return 1;
 }
 
 static void tb2_init_consts(lua_State *L) {
   lua_pushinteger(L, TB_PATH_MAX); lua_setfield(L, -2, "PATH_MAX");
   lua_pushstring(L, TB_VERSION_STR); lua_setfield(L, -2, "VERSION_STR");
   lua_pushinteger(L, TB_OPT_ATTR_W); lua_setfield(L, -2, "OPT_ATTR_W");
+#ifdef TB_OPT_EGC
   lua_pushinteger(L, TB_OPT_EGC); lua_setfield(L, -2, "OPT_EGC");
+#endif
   lua_pushinteger(L, TB_KEY_CTRL_TILDE); lua_setfield(L, -2, "KEY_CTRL_TILDE");
   lua_pushinteger(L, TB_KEY_CTRL_2); lua_setfield(L, -2, "KEY_CTRL_2");
   lua_pushinteger(L, TB_KEY_CTRL_A); lua_setfield(L, -2, "KEY_CTRL_A");
@@ -332,10 +351,18 @@ static void tb2_init_consts(lua_State *L) {
   lua_pushinteger(L, TB_HI_BLACK); lua_setfield(L, -2, "HI_BLACK");
   lua_pushinteger(L, TB_BRIGHT); lua_setfield(L, -2, "BRIGHT");
   lua_pushinteger(L, TB_DIM); lua_setfield(L, -2, "DIM");
+#ifdef TB_STRIKEOUT
   lua_pushinteger(L, TB_STRIKEOUT); lua_setfield(L, -2, "STRIKEOUT");
+#endif
+#ifdef TB_UNDERLINE_2
   lua_pushinteger(L, TB_UNDERLINE_2); lua_setfield(L, -2, "UNDERLINE_2");
+#endif
+#ifdef TB_OVERLINE
   lua_pushinteger(L, TB_OVERLINE); lua_setfield(L, -2, "OVERLINE");
+#endif
+#ifdef TB_INVISIBLE
   lua_pushinteger(L, TB_INVISIBLE); lua_setfield(L, -2, "INVISIBLE");
+#endif
   lua_pushinteger(L, TB_EVENT_KEY); lua_setfield(L, -2, "EVENT_KEY");
   lua_pushinteger(L, TB_EVENT_RESIZE); lua_setfield(L, -2, "EVENT_RESIZE");
   lua_pushinteger(L, TB_EVENT_MOUSE); lua_setfield(L, -2, "EVENT_MOUSE");
@@ -352,7 +379,9 @@ static void tb2_init_consts(lua_State *L) {
   lua_pushinteger(L, TB_OUTPUT_256); lua_setfield(L, -2, "OUTPUT_256");
   lua_pushinteger(L, TB_OUTPUT_216); lua_setfield(L, -2, "OUTPUT_216");
   lua_pushinteger(L, TB_OUTPUT_GRAYSCALE); lua_setfield(L, -2, "OUTPUT_GRAYSCALE");
+#ifdef TB_OUTPUT_TRUECOLOR
   lua_pushinteger(L, TB_OUTPUT_TRUECOLOR); lua_setfield(L, -2, "OUTPUT_TRUECOLOR");
+#endif
   lua_pushinteger(L, TB_OK); lua_setfield(L, -2, "OK");
   lua_pushinteger(L, TB_ERR); lua_setfield(L, -2, "ERR");
   lua_pushinteger(L, TB_ERR_NEED_MORE); lua_setfield(L, -2, "ERR_NEED_MORE");
@@ -390,6 +419,8 @@ static const luaL_Reg tb2lib[] = {
   {"height", tb2_height},
   {"clear", tb2_clear},
   {"setclearattr", tb2_set_clear_attrs},
+  {"setinputmode", tb2_set_input_mode},
+  {"setoutputmode", tb2_set_output_mode},
   {"present", tb2_present},
   {"setcursor", tb2_set_cursor},
   {"hidecursor", tb2_hide_cursor},
